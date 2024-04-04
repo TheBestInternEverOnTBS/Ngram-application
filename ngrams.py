@@ -76,47 +76,61 @@ def get_unigram_heatmap_data(url):
 
     return freq_array, words
 
-def get_unigram_data(url):
+def get_ngram_data(url, n):
+    """
+    Gets n-gram data from the given URL where 'n' specifies the size of the n-gram.
+    For example, 1 would be unigrams, 2 would be bigrams, etc.
+    """
     response = requests.get(url)
     if not response.ok:
         print(f"Failed to get data for {url}")
         return Counter()
     soup = BeautifulSoup(response.content, "html.parser")
-
+    
     # Extract text from the webpage
     text = ' '.join([element.get_text().strip() for element in soup.find_all("p")])
-
+    
     # Clean and tokenize the text
     tokens = word_tokenize(clean_text(text))
-
-    # Define N-gram length as 1 for unigrams
-    N = 1
-
-    # Count unigrams with frequency
-    unigram_freq = Counter(tokens)
-
-    return unigram_freq
-
-def create_shared_unigram_table(unigrams_1, unigrams_2, top_n=10):
-    # Get the unique set of words from both URLs
-    all_words = set(unigrams_1.keys()) | set(unigrams_2.keys())
-
-    # Initialize a plot-friendly format for the shared table
-    freq_table = []
-
-    for word in all_words:
-        freq_1 = unigrams_1.get(word, 0)
-        freq_2 = unigrams_2.get(word, 0)
-        
-        # Append to the table
-        freq_table.append([word, freq_1, freq_2])
     
-    # Sort the table based on the sum of frequencies from both URLs and select the top 'n'
-    freq_table.sort(key=lambda x: x[1] + x[2], reverse=True)
-    freq_table = freq_table[:top_n]  # Take only the top 'n' frequencies
+    # Generate n-grams
+    ngrams = nltk.ngrams(tokens, n)
+    ngram_freq = Counter(ngrams)
+    
+    return ngram_freq
+
+def create_unique_ngram_table(ngrams_1, ngrams_2, top_n=10):
+    unique_1 = Counter({ngram: ngrams_1[ngram] for ngram in ngrams_1 if ngram not in ngrams_2})
+    unique_2 = Counter({ngram: ngrams_2[ngram] for ngram in ngrams_2 if ngram not in ngrams_1})
+    
+    # Take the top 'top_n' from each unique Counter
+    top_unique_ngrams = (unique_1 + unique_2).most_common(top_n)
+    
+    # We create a list of ngrams with frequency in URL1 if it's unique to URL1 otherwise 0 and vice versa.
+    unique_ngrams = [(ngram, unique_1[ngram] if ngram in unique_1 else 0, unique_2[ngram] if ngram in unique_2 else 0) for ngram, _ in top_unique_ngrams]
+    
+    # Sort based on the sum of frequencies
+    unique_ngrams.sort(key=lambda x: x[1] + x[2], reverse=True)
     
     # Convert to a structured format for plotting
-    words, freqs_1, freqs_2 = zip(*freq_table)
+    words, freqs_1, freqs_2 = zip(*unique_ngrams)
+    return words, freqs_1, freqs_2
+
+def create_shared_unigram_table(ngrams_1, ngrams_2, top_n=10):
+    combined_ngrams = ngrams_1 + ngrams_2
+    top_combined_ngrams = Counter(combined_ngrams).most_common(top_n)
+    
+    # We take the top `top_n` combined ngrams and count frequencies separately.
+    shared_ngrams = [(ngram, ngrams_1[ngram], ngrams_2[ngram]) for ngram, _ in top_combined_ngrams if ngram in ngrams_1 and ngram in ngrams_2]
+    
+    # Sort based on frequencies
+    shared_ngrams.sort(key=lambda x: x[1] + x[2], reverse=True)
+    
+    # Take only the top_n shared ngrams for visualization
+    shared_ngrams = shared_ngrams[:top_n]
+    
+    # Convert to a structured format for plotting
+    words, freqs_1, freqs_2 = zip(*shared_ngrams)
     return words, freqs_1, freqs_2
 
 # Function to plot a heatmap of unigram frequencies
@@ -126,42 +140,61 @@ def plot_unigram_heatmap(freq_array, words, title, ax):
     ax.set_yticklabels(words, rotation=0)
     ax.set_xticklabels(["Frequency"], rotation=90)
 
-# Retrieve and process the unigram data for both websites
-unigram_data_1 = get_unigram_data("https://www.nbcnews.com/news/world/earthquake-taiwan-tsunami-rcna146140")
-unigram_data_2 = get_unigram_data("https://edition.cnn.com/asia/live-news/taiwan-earthquake-hualien-tsunami-warning-hnk-intl/index.html")
+# User input to choose the n-gram type
+n = int(input("Enter 1 for Unigrams, 2 for Bigrams, or 3 for Trigrams: "))
 
-# Get the top 10 most common unigrams for each URL
-freqs_url1 = unigram_data_1.most_common(10)
-freqs_url2 = unigram_data_2.most_common(10)
+# Retrieve and process the n-gram data for both websites
+ngram_data_1 = get_ngram_data("https://www.nbcnews.com/news/world/earthquake-taiwan-tsunami-rcna146140", n)
+ngram_data_2 = get_ngram_data("https://edition.cnn.com/asia/live-news/taiwan-earthquake-hualien-tsunami-warning-hnk-intl/index.html", n)
 
-# Create the shared unigram table with only the top 10 unigrams
-words_shared, freqs_1_shared, freqs_2_shared = create_shared_unigram_table(unigram_data_1, unigram_data_2, top_n=10)
+# Get the top 10 most common n-grams for each URL
+top_ngrams_1 = ngram_data_1.most_common(10)
+top_ngrams_2 = ngram_data_2.most_common(10)
 
-# The `freqs_url1` and `freqs_url2` are lists of tuples, we need to separate the words and the frequencies.
-words_url1, values_url1 = zip(*freqs_url1) if freqs_url1 else ([], [])
-words_url2, values_url2 = zip(*freqs_url2) if freqs_url2 else ([], [])
+# Create the shared n-gram table with only the top 10 n-grams
+words_shared, freqs_1_shared, freqs_2_shared = create_shared_unigram_table(ngram_data_1, ngram_data_2, top_n=10)
 
-# Setup the figure with 3 vertical subplots
-fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(5, 15))
+# Create the unique n-gram table with only the top 10 unique n-grams
+words_unique, freqs_1_unique, freqs_2_unique = create_unique_ngram_table(ngram_data_1, ngram_data_2, top_n=10)
 
-# URL 1 Unigrams
-sns.heatmap(np.array(values_url1).reshape(-1, 1), annot=True, fmt="d", cmap="Blues", yticklabels=words_url1, ax=axes[0])
-axes[0].set_title("URL 1 Unigrams")
-axes[0].set_xticklabels(['Frequency'], rotation=90)
-axes[0].set_yticklabels(axes[0].get_yticklabels(), rotation=0)
+# Setup the figure with 4 vertical subplots
+fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(5, 10))
 
-# URL 2 Unigrams
-sns.heatmap(np.array(values_url2).reshape(-1, 1), annot=True, fmt="d", cmap="Greens", yticklabels=words_url2, ax=axes[1])
-axes[1].set_title("URL 2 Unigrams")
-axes[1].set_xticklabels(['Frequency'], rotation=90)
-axes[1].set_yticklabels(axes[1].get_yticklabels(), rotation=0)
+# Fetch the two URLs
+url_1 = "https://www.blognone.com/node/139037"
+url_2 = "https://brandinside.asia/ais-business-martech-expo/"
 
-# Shared Unigrams
+fig.subplots_adjust(hspace=0.8)
+
+# URL 1 n-grams
+words1, values1 = zip(*top_ngrams_1) if top_ngrams_1 else ([], [])
+words1 = [' '.join(word) for word in words1]
+sns.heatmap(np.array(values1).reshape(-1, 1), annot=True, fmt="d", cmap="Blues", yticklabels=words1, ax=axes[0], cbar=True)
+axes[0].set_title(f"Top 10 N-grams from {url_1}")
+axes[0].set_xticklabels(['Frequency'], rotation=0)
+axes[0].set_yticklabels(words1, rotation=0)
+
+# URL 2 n-grams
+words2, values2 = zip(*top_ngrams_2) if top_ngrams_2 else ([], [])
+words2 = [' '.join(word) for word in words2]
+sns.heatmap(np.array(values2).reshape(-1, 1), annot=True, fmt="d", cmap="Greens", yticklabels=words2, ax=axes[1], cbar=True)
+axes[1].set_title(f"Top 10 N-grams from {url_2}")
+axes[1].set_xticklabels(['Frequency'], rotation=0)
+axes[1].set_yticklabels(words2, rotation=0)
+
+# Shared n-grams heatmap
 shared_freqs_array = np.array([freqs_1_shared, freqs_2_shared]).T  # Transpose for vertical orientation
-sns.heatmap(shared_freqs_array, annot=True, fmt="d", cmap="Oranges", yticklabels=words_shared, ax=axes[2], cbar=True)
-axes[2].set_title("Shared Unigrams")
-axes[2].set_xticklabels(['URL 1', 'URL 2'], rotation=90)
-axes[2].set_yticklabels(axes[2].get_yticklabels(), rotation=0)
+sns.heatmap(shared_freqs_array, annot=True, fmt="d", cmap="Purples", yticklabels=words_shared, ax=axes[2], cbar=True)
+axes[2].set_title(f"Top 10 Shared N-grams between URLs")
+axes[2].set_xticklabels([url_1, url_2], rotation=0)
+axes[2].set_yticklabels(words_shared, rotation=0)
+
+# Unique n-grams heatmap
+unique_freqs_array = np.array([freqs_1_unique, freqs_2_unique]).T  # Transpose for vertical orientation
+sns.heatmap(unique_freqs_array, annot=True, fmt="d", cmap="Oranges", yticklabels=words_unique, ax=axes[3], cbar=True)
+axes[3].set_title("Top 10 Unique N-grams from both URLs")
+axes[3].set_xticklabels([f'Unique to {url_1}', f'Unique to {url_2}'], rotation=0)
+axes[3].set_yticklabels(words_unique, rotation=0)
 
 plt.tight_layout()
 plt.show()
