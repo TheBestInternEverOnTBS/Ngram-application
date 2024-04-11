@@ -10,7 +10,6 @@ import re
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
-# Ensure the punkt tokenizer is downloaded
 nltk.download('punkt')
 nltk.download('stopwords')
 nltk.download('wordnet')
@@ -39,42 +38,6 @@ def clean_text(text):
     tokens = [lemmatizer.lemmatize(word) for word in tokens]
     
     return ' '.join(tokens)
-
-def get_unigram_heatmap_data(url):
-    response = requests.get(url)
-    if not response.ok:
-        print(f"Failed to get data for {url}")
-        return None, None
-    soup = BeautifulSoup(response.content, "html.parser")
-
-    # Extract titles from the webpage
-    titles = [title.get_text().strip() for title in soup.find_all("p")]
-
-    # Join the titles into a single string for tokenization
-    all_titles_text = ' '.join(titles)
-
-    # Tokenize the text
-    tokens = word_tokenize(clean_text(all_titles_text))
-
-    # Define N-gram length as 1 for unigrams
-    N = 1
-
-    # Count unigrams with frequency
-    unigram_freq = Counter(tokens)
-
-    # Take only the 50 most common unigrams
-    most_common_unigrams = unigram_freq.most_common(10)
-    if not most_common_unigrams:
-        print(f"No unigrams found for {url}")
-        return None, None
-
-    # Collect all unique words in the most common unigrams
-    words, freqs = zip(*most_common_unigrams)
-
-    # Create an array from the frequencies for plotting
-    freq_array = np.array(freqs).reshape(-1, 1)
-
-    return freq_array, words
 
 def get_ngram_data(url, n):
     """
@@ -116,7 +79,7 @@ def create_unique_ngram_table(ngrams_1, ngrams_2, top_n=10):
     words, freqs_1, freqs_2 = zip(*unique_ngrams)
     return words, freqs_1, freqs_2
 
-def create_shared_unigram_table(ngrams_1, ngrams_2, top_n=10):
+def create_shared_ngram_table(ngrams_1, ngrams_2, top_n=10):
     combined_ngrams = ngrams_1 + ngrams_2
     top_combined_ngrams = Counter(combined_ngrams).most_common(top_n)
     
@@ -134,7 +97,7 @@ def create_shared_unigram_table(ngrams_1, ngrams_2, top_n=10):
     return words, freqs_1, freqs_2
 
 # Function to plot a heatmap of unigram frequencies
-def plot_unigram_heatmap(freq_array, words, title, ax):
+def plot_ngram_heatmap(freq_array, words, title, ax):
     sns.heatmap(freq_array, annot=True, fmt=".0f", cmap="coolwarm", xticklabels=["Frequency"], yticklabels=words, ax=ax, cbar=False)
     ax.set_title(title)
     ax.set_yticklabels(words, rotation=0)
@@ -143,26 +106,26 @@ def plot_unigram_heatmap(freq_array, words, title, ax):
 # User input to choose the n-gram type
 n = int(input("Enter 1 for Unigrams, 2 for Bigrams, or 3 for Trigrams: "))
 
+# Define the URLs at the beginning of the script
+url_1 = "https://anzphotobookaward.com/privacy-policy/"
+url_2 = "https://www.blognone.com/node/139037"
+
 # Retrieve and process the n-gram data for both websites
-ngram_data_1 = get_ngram_data("https://www.nbcnews.com/news/world/earthquake-taiwan-tsunami-rcna146140", n)
-ngram_data_2 = get_ngram_data("https://edition.cnn.com/asia/live-news/taiwan-earthquake-hualien-tsunami-warning-hnk-intl/index.html", n)
+ngram_data_1 = get_ngram_data(url_1, n)
+ngram_data_2 = get_ngram_data(url_2, n)
 
 # Get the top 10 most common n-grams for each URL
 top_ngrams_1 = ngram_data_1.most_common(10)
 top_ngrams_2 = ngram_data_2.most_common(10)
 
 # Create the shared n-gram table with only the top 10 n-grams
-words_shared, freqs_1_shared, freqs_2_shared = create_shared_unigram_table(ngram_data_1, ngram_data_2, top_n=10)
+words_shared, freqs_1_shared, freqs_2_shared = create_shared_ngram_table(ngram_data_1, ngram_data_2, top_n=10)
 
 # Create the unique n-gram table with only the top 10 unique n-grams
 words_unique, freqs_1_unique, freqs_2_unique = create_unique_ngram_table(ngram_data_1, ngram_data_2, top_n=10)
 
 # Setup the figure with 4 vertical subplots
 fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(5, 10))
-
-# Fetch the two URLs
-url_1 = "https://www.blognone.com/node/139037"
-url_2 = "https://brandinside.asia/ais-business-martech-expo/"
 
 fig.subplots_adjust(hspace=0.8)
 
